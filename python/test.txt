@@ -1,0 +1,63 @@
+import RPi.GPIO as GPIO
+import time
+import librosa
+
+# Set GPIO mode to BCM
+GPIO.setmode(GPIO.BOARD)
+
+# Define GPIO pin for the LED
+led_pin = 3
+
+# Set up LED pin as output
+GPIO.setup(led_pin, GPIO.OUT)
+
+# Create PWM object with 100 Hz frequency
+pwm_led = GPIO.PWM(led_pin, 100)
+pwm_led.start(0)  # Start PWM with 0% duty cycle
+
+# Load audio file
+audio_file = 'marimba.wav'
+y, sr = librosa.load(audio_file)
+
+# Get tempo and beats of the audio file
+tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+
+# Calculate the duration of the audio file
+audio_duration = librosa.get_duration(y=y, sr=sr)
+
+# Calculate beat strengths
+onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+beat_strengths = librosa.util.normalize(onset_env)
+
+# Function to blink LED with variable brightness based on beat strength
+def blink_led(beat_strength):
+    # Map beat strength to PWM duty cycle (0-100)
+    duty_cycle = beat_strength * 100
+    pwm_led.ChangeDutyCycle(duty_cycle)
+    time.sleep(0.1)  # Adjust this delay for desired blink duration
+    pwm_led.ChangeDutyCycle(0)  # Turn off the LED
+
+print("Starting LED blinking in 1 second...")
+time.sleep(1)
+
+try:
+    # Start blinking the LED in sync with the music
+    start_time = time.time()
+    for beat in beats:
+        # Calculate the time until the next beat
+        time_until_next_beat = librosa.frames_to_time(beat, sr=sr) - (time.time() - start_time)
+        
+        # If there's enough time until the next beat, blink the LED
+        if time_until_next_beat > 0:
+            blink_led(beat_strengths[beat])
+        
+        # Adjust timing to sync with the song's duration
+        if time.time() - start_time > audio_duration:
+            break
+
+except KeyboardInterrupt:
+    pass
+
+# Clean up GPIO
+pwm_led.stop()
+GPIO.cleanup()
